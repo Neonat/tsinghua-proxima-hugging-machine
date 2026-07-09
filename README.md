@@ -6,16 +6,17 @@ Full spec: `HUG_PROJECT_BRIEF.md` (see ~/Downloads).
 
 ## Build order
 
-1. **Zone painter** — `frontend/zone-painter/` ✅ built
-2. **Python CV backend** — `backend/` (MediaPipe Holistic → scoring → WebSocket) ✅ built
-3. **Hug rater frontend** — `frontend/hug-rater/` (live heatmap, score reveal, leaderboard) ✅ built
+1. **Zone painter** — `hug-machine/frontend/zone-painter/` ✅ built
+2. **Python CV backend** — `hug-machine/backend/` (MediaPipe Holistic → scoring → WebSocket) ✅ built
+3. **Hug rater frontend** — `hug-machine/frontend/hug-rater/` (live heatmap, score reveal, leaderboard) ✅ built
 
 ## Running a hug session
 
-1. Double-click **`Start Hug Backend.command`** in Finder (or run
-   `backend/.venv/bin/python backend/main.py`). First run: macOS asks for
-   camera access — click **Allow**. No camera handy? Add `--synthetic`.
-2. `cd frontend/hug-rater && npm run dev` → http://localhost:5200
+1. Double-click **`hug-machine/Start Hug Backend.command`** in Finder (or run
+   `hug-machine/backend/.venv/bin/python hug-machine/backend/main.py`). First
+   run: macOS asks for camera access — click **Allow**. No camera handy? Add
+   `--synthetic`.
+2. `cd hug-machine/frontend/hug-rater && npm run dev` → http://localhost:5200
 3. Aim the webcam at the mannequin (check the camera panel, bottom-right),
    press **MARK MANNEQUIN**, then click its neck and the base of its torso in
    the camera panel — zone anchors lock on and persist across restarts.
@@ -39,13 +40,13 @@ hug-machine/
 ## Zone painter
 
 ```sh
-cd frontend/zone-painter
+cd hug-machine/frontend/zone-painter
 npm install
 npm run dev
 ```
 
 Paint the nine contact zones onto the mannequin, then export
-`mannequin_zones.json` and move it into `data/`.
+`mannequin_zones.json` and move it into `hug-machine/data/`.
 
 ---
 
@@ -56,20 +57,21 @@ Paint the nine contact zones onto the mannequin, then export
 
 ### 三个组成部分
 
-1. **区域画笔（Zone Painter）** — `frontend/zone-painter/` ✅ 已完成
+1. **区域画笔（Zone Painter）** — `hug-machine/frontend/zone-painter/` ✅ 已完成
    一次性设置工具：在 3D 人体模特上"画"出九个接触区域（胸口、左右肩、左右上臂、
    左右前臂、上背、下背），导出为 `mannequin_zones.json`。
-2. **Python 视觉后端** — `backend/`（MediaPipe Holistic → 打分 → WebSocket）✅ 已完成
-3. **拥抱打分前端** — `frontend/hug-rater/`（实时热力图、打分动画、排行榜）✅ 已完成
+2. **Python 视觉后端** — `hug-machine/backend/`（MediaPipe Holistic → 打分 → WebSocket）✅ 已完成
+3. **拥抱打分前端** — `hug-machine/frontend/hug-rater/`（实时热力图、打分动画、排行榜）✅ 已完成
 
 ### 如何进行一次拥抱打分
 
-1. 在访达（Finder）中双击 `Start Hug Backend.command`。
+1. 在访达（Finder）中双击 `hug-machine/Start Hug Backend.command`。
    首次运行时 macOS 会弹出"终端想要访问相机"的提示，点击**允许**。
    （若没有摄像头可用，改为在终端运行
-   `backend/.venv/bin/python backend/main.py --synthetic` 使用模拟数据。）
+   `hug-machine/backend/.venv/bin/python hug-machine/backend/main.py --synthetic`
+   使用模拟数据。）
 2. 打开浏览器访问 http://localhost:5200 （若尚未启动，在
-   `frontend/hug-rater` 目录下运行 `npm run dev`）。
+   `hug-machine/frontend/hug-rater` 目录下运行 `npm run dev`）。
 3. 把摄像头对准人体模特（可在操作界面右下角的摄像头画面里确认位置），
    点击 **MARK MANNEQUIN**，然后依次点击模特的**颈部**和**躯干底部**两个位置——
    系统会据此锁定各区域的位置，并在重启后依然保留。
