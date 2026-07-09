@@ -1,0 +1,29 @@
+# dependencies
+node_modules/
+.venv/
+__pycache__/
+*.pyc
+
+# build output
+dist/
+dist-ssr/
+*.local
+
+# runtime data (personal / generated at runtime)
+hug-machine/data/leaderboard.db
+hug-machine/data/profiles/
+hug-machine/data/mannequin_anchors.json
+hug-machine/data/camera_calib.json
+
+# logs
+*.log
+npm-debug.log*
+
+# editor / OS
+.DS_Store
+.vscode/
+.idea/
+
+# env
+.env
+.env.local
