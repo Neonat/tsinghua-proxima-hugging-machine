@@ -6,9 +6,9 @@ Full spec: `HUG_PROJECT_BRIEF.md` (see ~/Downloads).
 
 ## Build order
 
-1. **Zone painter** — `hug-machine/frontend/zone-painter/` ✅ built
-2. **Python CV backend** — `hug-machine/backend/` (MediaPipe Holistic → scoring → WebSocket) ✅ built
-3. **Hug rater frontend** — `hug-machine/frontend/hug-rater/` (live heatmap, score reveal, leaderboard) ✅ built
+1. **Zone painter** — `hug-machine/frontend/zone-painter/` 
+2. **Python CV backend** — `hug-machine/backend/` (MediaPipe Holistic → scoring → WebSocket) 
+3. **Hug rater frontend** — `hug-machine/frontend/hug-rater/` (live heatmap, score reveal, leaderboard) 
 
 ## Running a hug session
 
@@ -57,11 +57,11 @@ Paint the nine contact zones onto the mannequin, then export
 
 ### 三个组成部分
 
-1. **区域画笔（Zone Painter）** — `hug-machine/frontend/zone-painter/` ✅ 已完成
+1. **区域画笔（Zone Painter）** — `hug-machine/frontend/zone-painter/` 
    一次性设置工具：在 3D 人体模特上"画"出九个接触区域（胸口、左右肩、左右上臂、
    左右前臂、上背、下背），导出为 `mannequin_zones.json`。
-2. **Python 视觉后端** — `hug-machine/backend/`（MediaPipe Holistic → 打分 → WebSocket）✅ 已完成
-3. **拥抱打分前端** — `hug-machine/frontend/hug-rater/`（实时热力图、打分动画、排行榜）✅ 已完成
+2. **Python 视觉后端** — `hug-machine/backend/`（MediaPipe Holistic → 打分 → WebSocket）
+3. **拥抱打分前端** — `hug-machine/frontend/hug-rater/`（实时热力图、打分动画、排行榜）
 
 ### 如何进行一次拥抱打分
 

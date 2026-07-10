@@ -22,6 +22,30 @@ function rampColor(t: number, out: THREE.Color): THREE.Color {
   return out.copy(BASE)
 }
 
+/** Ember-tinted billboard text label (FRONT / BACK floor markers). */
+function makeTextSprite(text: string, position: THREE.Vector3): THREE.Sprite {
+  const canvas = document.createElement('canvas')
+  canvas.width = 512
+  canvas.height = 128
+  const ctx = canvas.getContext('2d')!
+  ctx.font = '600 72px "Chakra Petch", sans-serif'
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.letterSpacing = '20px'
+  ctx.fillStyle = 'rgba(255, 158, 94, 0.85)'
+  ctx.shadowColor = 'rgba(255, 158, 94, 0.6)'
+  ctx.shadowBlur = 18
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2)
+  const texture = new THREE.CanvasTexture(canvas)
+  texture.colorSpace = THREE.SRGBColorSpace
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({ map: texture, transparent: true, opacity: 0.8, depthWrite: false }),
+  )
+  sprite.position.copy(position)
+  sprite.scale.set(0.52, 0.13, 1)
+  return sprite
+}
+
 /** Live mannequin heatmap: zones glow blue -> orange -> red by intensity. */
 export class HeatmapScene {
   private renderer!: THREE.WebGLRenderer
@@ -66,6 +90,12 @@ export class HeatmapScene {
     ;(grid.material as THREE.Material).transparent = true
     ;(grid.material as THREE.Material).opacity = 0.55
     this.scene.add(grid)
+
+    // Orientation labels: the mannequin faces +z (its chest zone is at +z).
+    // Sprites billboard toward the camera, so they stay readable while the
+    // view auto-rotates.
+    this.scene.add(makeTextSprite('FRONT', new THREE.Vector3(0, 0.09, 1.05)))
+    this.scene.add(makeTextSprite('BACK', new THREE.Vector3(0, 0.09, -1.05)))
 
     const { geometry } = buildDefaultMannequin()
     const vertexCount = geometry.attributes.position.count
