@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Serial Test · Hug Robot</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0; padding: 32px; background: #0b0908; color: #f0e8dc;
+        font-family: 'IBM Plex Mono', ui-monospace, Menlo, monospace; font-size: 14px;
+      }
+      h1 { font-size: 18px; letter-spacing: .06em; margin: 0 0 4px; }
+      .sub { color: #9a8b78; margin: 0 0 20px; font-size: 12px; }
+      .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin: 10px 0; }
+      button {
+        background: #1a1510; color: #f0e8dc; border: 1px solid #3d3123;
+        border-radius: 8px; padding: 9px 14px; font: inherit; cursor: pointer;
+      }
+      button:hover:not(:disabled) { border-color: #ff9e5e; color: #ff9e5e; }
+      button:disabled { opacity: .35; cursor: default; }
+      button.primary { background: linear-gradient(180deg,#ff8a4d,#f05a2e); color: #1a0d06; border-color: #ff9e5e; font-weight: 600; }
+      button.danger { border-color: #d94141; color: #ff6b6b; }
+      .group { border: 1px solid #2b231a; border-radius: 12px; padding: 14px 16px; margin: 14px 0; }
+      .group h2 { font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: #6b5e4e; margin: 0 0 10px; }
+      input[type=range] { flex: 1; min-width: 180px; accent-color: #ff9e5e; }
+      code.val { color: #ff9e5e; min-width: 60px; }
+      #log {
+        background: #06040399; border: 1px solid #2b231a; border-radius: 10px;
+        padding: 12px; height: 240px; overflow-y: auto; white-space: pre-wrap;
+        font-size: 12px; line-height: 1.5;
+      }
+      .in { color: #6fdc8c; }   /* from robot */
+      .out { color: #ff9e5e; }  /* to robot */
+      .sys { color: #6b5e4e; }
+      .pill { padding: 3px 10px; border-radius: 999px; border: 1px solid #3d3123; font-size: 11px; color: #9a8b78; }
+      .pill.on { color: #6fdc8c; border-color: #6fdc8c; }
+      .note { color: #9a8b78; font-size: 12px; line-height: 1.6; }
+      .warn { color: #ffb37a; }
+    </style>
+  </head>
+  <body>
+    <h1>SERIAL TEST · Hug Robot</h1>
+    <p class="sub">Chrome/Edge only · close the Arduino Serial Monitor before connecting</p>
+
+    <div class="row">
+      <button id="connect" class="primary">Connect to Arduino</button>
+      <span id="status" class="pill">disconnected</span>
+    </div>
+
+    <div class="group">
+      <h2>Original sketch (pipeline.ino)</h2>
+      <div class="row">
+        <button data-cmd="hug" class="cmd" disabled>hug — autonomous hug</button>
+      </div>
+      <p class="note">This works on the sketch you have flashed <em>right now</em>. If the arms
+        close, browser → Arduino is proven.</p>
+    </div>
+
+    <div class="group">
+      <h2>New sketch (hug_receiver.ino) — flash this for custom params</h2>
+      <div class="row">
+        <button data-cmd="play" class="cmd" disabled>play — seek contact</button>
+        <button data-cmd="end" class="cmd" disabled>end — release</button>
+        <button data-cmd="stop" class="cmd danger" disabled>stop — emergency</button>
+      </div>
+      <div class="row">
+        <span>strength</span>
+        <input id="strength" type="range" min="0" max="255" value="0" disabled />
+        <code class="val" id="strengthVal">s0</code>
+      </div>
+      <div class="row">
+        <button id="sweep" disabled>▶ simulate a hug (play → ramp → end)</button>
+      </div>
+      <p class="note">Move the slider to press the arms in/out live. <span class="warn">The
+        slider only responds after you flash hug_receiver.ino.</span></p>
+    </div>
+
+    <div id="log"></div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const logEl = $('log');
+      let port = null, writer = null, connected = false;
+
+      function log(msg, cls = 'sys') {
+        const line = document.createElement('div');
+        line.className = cls;
+        line.textContent = msg;
+        logEl.appendChild(line);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      async function send(cmd) {
+        if (!writer) { log('not connected', 'sys'); return; }
+        await writer.write(new TextEncoder().encode(cmd + '\n'));
+        log('→ ' + cmd, 'out');
+      }
+
+      async function connect() {
+        if (!('serial' in navigator)) {
+          log('Web Serial not available — use Chrome or Edge.', 'warn');
+          return;
+        }
+        try {
+          port = await navigator.serial.requestPort();      // shows the port picker
+          await port.open({ baudRate: 9600 });
+          writer = port.writable.getWriter();
+          connected = true;
+          $('status').textContent = 'connected';
+          $('status').classList.add('on');
+          $('connect').textContent = 'Disconnect';
+          document.querySelectorAll('.cmd, #strength, #sweep').forEach((el) => (el.disabled = false));
+          log('connected at 9600 baud', 'sys');
+          readLoop();
+        } catch (e) {
+          log('connect failed: ' + e.message, 'warn');
+        }
+      }
+
+      async function disconnect() {
+        try {
+          connected = false;
+          if (writer) { await writer.close(); writer = null; }
+          if (port) { await port.close(); port = null; }
+        } catch (e) { /* ignore */ }
+        $('status').textContent = 'disconnected';
+        $('status').classList.remove('on');
+        $('connect').textContent = 'Connect to Arduino';
+        document.querySelectorAll('.cmd, #strength, #sweep').forEach((el) => (el.disabled = true));
+        log('disconnected', 'sys');
+      }
+
+      async function readLoop() {
+        const decoder = new TextDecoderStream();
+        const readable = port.readable.pipeThrough(decoder);
+        const reader = readable.getReader();
+        let buf = '';
+        try {
+          while (connected) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            buf += value;
+            let idx;
+            while ((idx = buf.indexOf('\n')) >= 0) {
+              const line = buf.slice(0, idx).replace(/\r$/, '').trim();
+              buf = buf.slice(idx + 1);
+              if (line) log('← ' + line, 'in');
+            }
+          }
+        } catch (e) {
+          log('read stopped: ' + e.message, 'sys');
+        } finally {
+          reader.releaseLock();
+        }
+      }
+
+      $('connect').addEventListener('click', () => (connected ? disconnect() : connect()));
+      document.querySelectorAll('.cmd').forEach((b) =>
+        b.addEventListener('click', () => send(b.dataset.cmd)),
+      );
+
+      // Live strength slider — sends s<value>, throttled to ~15/sec.
+      let lastSent = 0;
+      $('strength').addEventListener('input', (e) => {
+        const v = e.target.value;
+        $('strengthVal').textContent = 's' + v;
+        const now = performance.now();
+        if (now - lastSent > 66) { lastSent = now; send('s' + v); }
+      });
+
+      // Simulate a hug: play, wait for contact seek, ramp strength up and down, end.
+      $('sweep').addEventListener('click', async () => {
+        await send('play');
+        await new Promise((r) => setTimeout(r, 3000)); // let it seek contact
+        const steps = 40, dur = 4000;
+        for (let i = 0; i <= steps; i++) {
+          const t = i / steps;
+          const s = Math.round(255 * Math.sin(t * Math.PI)); // rise then fall
+          $('strength').value = s;
+          $('strengthVal').textContent = 's' + s;
+          await send('s' + s);
+          await new Promise((r) => setTimeout(r, dur / steps));
+        }
+        await send('end');
+      });
+    </script>
+  </body>
+</html>

@@ -1,22 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { HeatmapScene } from './heatmap'
 import { useHugSocket, type Frame, type LeaderRow, type Mannequin, type Profile } from './useHugSocket'
+import { uploadHug, type HugFrame } from './supabase'
 
-const ZONE_LABELS: Record<string, string> = {
-  chest: 'Chest',
-  left_shoulder: 'L Shoulder',
-  right_shoulder: 'R Shoulder',
-  left_upper_arm: 'L Up Arm',
-  right_upper_arm: 'R Up Arm',
-  left_lower_arm: 'L Lo Arm',
-  right_lower_arm: 'R Lo Arm',
-  upper_back: 'Up Back',
-  lower_back: 'Lo Back',
-}
+const COUNTDOWN_S = 3
+const RECORD_S = 10
 
-function fmtMs(ms: number) {
-  return (ms / 1000).toFixed(1) + 's'
-}
+type Phase = 'idle' | 'countdown' | 'recording' | 'score'
 
 export default function App() {
   const viewportRef = useRef<HTMLDivElement>(null)
@@ -25,10 +15,107 @@ export default function App() {
     status, frame, score, leaderboard, preview, mannequin, detecting, error,
     startHug, endHug, clearScore, setMannequin,
   } = useHugSocket()
+
+  const [phase, setPhase] = useState<Phase>('idle')
+  const [count, setCount] = useState(COUNTDOWN_S)
+  const [progress, setProgress] = useState(0)
   const [name, setName] = useState('')
+  const [toast, setToast] = useState<string | null>(null)
+  const framesRef = useRef<HugFrame[]>([])
+  const t0Ref = useRef<number | null>(null)
+  const timersRef = useRef<number[]>([])
+
   // Manual marking: click the neck, then the torso base, in the camera panel.
   const [marking, setMarking] = useState<'neck' | 'base' | null>(null)
   const [neckPoint, setNeckPoint] = useState<[number, number] | null>(null)
+
+  useEffect(() => {
+    const scene = new HeatmapScene()
+    sceneRef.current = scene
+    scene.mount(viewportRef.current!)
+    return () => scene.dispose()
+  }, [])
+
+  // The heatmap only paints while a hug is being recorded (or on the score
+  // screen behind the reveal) — idle bystanders shouldn't light it up.
+  useEffect(() => {
+    if (!frame) return
+    const live = phase === 'recording' || phase === 'score'
+    sceneRef.current?.setIntensities(live ? frame.zones : {})
+  }, [frame, phase])
+
+  // Capture the parameter stream while recording — this is the payload the
+  // space station replays on the robot.
+  useEffect(() => {
+    if (phase !== 'recording' || !frame) return
+    if (t0Ref.current === null) t0Ref.current = frame.t_ms
+    framesRef.current.push({
+      t: frame.t_ms - t0Ref.current,
+      s: frame.squeeze,
+      r: frame.wrap_reach,
+      c: frame.closing_velocity,
+    })
+  }, [frame, phase])
+
+  // Backend scores the session after end_hug; that flips us to the score phase.
+  useEffect(() => {
+    if (score && phase === 'recording') setPhase('score')
+  }, [score, phase])
+
+  // Backend dropping mid-flow: bail back to idle.
+  useEffect(() => {
+    if (status !== 'open' && phase !== 'idle') resetToIdle()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status])
+
+  const flash = (msg: string) => {
+    setToast(msg)
+    window.setTimeout(() => setToast(null), 3200)
+  }
+
+  const clearTimers = () => {
+    for (const t of timersRef.current) window.clearInterval(t)
+    timersRef.current = []
+  }
+
+  const resetToIdle = () => {
+    clearTimers()
+    clearScore()
+    setPhase('idle')
+    setProgress(0)
+  }
+
+  const begin = () => {
+    if (status !== 'open' || phase !== 'idle') return
+    clearScore() // a stale score from the previous session must not end this one
+    framesRef.current = []
+    t0Ref.current = null
+    setCount(COUNTDOWN_S)
+    setPhase('countdown')
+    let c = COUNTDOWN_S
+    const iv = window.setInterval(() => {
+      c -= 1
+      if (c > 0) {
+        setCount(c)
+        return
+      }
+      window.clearInterval(iv)
+      startHug(name.trim() || 'Anonymous')
+      setPhase('recording')
+      setProgress(0)
+      const started = performance.now()
+      const pv = window.setInterval(() => {
+        const p = (performance.now() - started) / (RECORD_S * 1000)
+        setProgress(Math.min(1, p))
+        if (p >= 1) {
+          window.clearInterval(pv)
+          endHug()
+        }
+      }, 100)
+      timersRef.current.push(pv)
+    }, 1000)
+    timersRef.current.push(iv)
+  }
 
   const onCamClick = (uv: [number, number]) => {
     if (marking === 'neck') {
@@ -41,129 +128,107 @@ export default function App() {
     }
   }
 
-  useEffect(() => {
-    const scene = new HeatmapScene()
-    sceneRef.current = scene
-    scene.mount(viewportRef.current!)
-    return () => scene.dispose()
-  }, [])
-
-  useEffect(() => {
-    if (frame) sceneRef.current?.setIntensities(frame.zones)
-  }, [frame])
-
-  const active = frame?.session.active ?? false
-  const tracking = frame?.tracking ?? false
   const cls = frame?.classification
+  const tracking = frame?.tracking ?? false
+  const showLive = phase === 'recording' || phase === 'score'
+  const remaining = Math.max(0, Math.ceil(RECORD_S * (1 - progress)))
 
   return (
-    <div className="shell">
-      <aside className="panel">
-        <header className="masthead">
-          <div className="masthead-glyph" aria-hidden>
-            ◉
-          </div>
-          <div>
-            <h1>HUG RATING MACHINE</h1>
-            <p className="sub">operator console · do not show the hugger</p>
-          </div>
-        </header>
+    <div className="kiosk">
+      <header className="kh">
+        <span className="kh-glyph" aria-hidden>◉</span>
+        <h1>PROXIMA</h1>
+        <span className={`kh-status ${status} ${tracking ? 'tracking' : ''}`}>
+          {status !== 'open' ? 'OFFLINE' : tracking ? 'TRACKING' : 'NO HUGGER'}
+        </span>
+      </header>
 
-        <section className="block">
-          <h2 className="block-title">Session</h2>
-          {!active ? (
-            <div className="session-idle">
-              <input
-                className="name-input"
-                placeholder="Hugger name…"
-                value={name}
-                maxLength={40}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') startHug(name.trim() || 'Anonymous')
-                }}
-              />
-              <button
-                className="btn primary big"
-                disabled={status !== 'open'}
-                onClick={() => startHug(name.trim() || 'Anonymous')}
-              >
-                ● START HUG
-              </button>
-            </div>
+      {showLive && (
+        <div className="meters-row">
+          <BigMeter label="Squeeze" value={frame?.squeeze ?? 0} />
+          <BigMeter label="Wrap Reach" value={frame?.wrap_reach ?? 0} />
+          <BigMeter label="Closing Velocity" value={frame?.closing_velocity ?? 0} />
+        </div>
+      )}
+
+      {phase === 'recording' && (
+        <div className="rec-bar">
+          <span className="rec-dot" /> RECORDING
+          <div className="rec-progress">
+            <div className="rec-progress-fill" style={{ width: `${progress * 100}%` }} />
+          </div>
+          <code>{remaining}s</code>
+        </div>
+      )}
+
+      <main className="viewport" ref={viewportRef}>
+        {phase === 'countdown' && (
+          <div className="countdown" key={count}>
+            {count}
+          </div>
+        )}
+
+        {phase === 'idle' && (
+          <div className="start-stack">
+            <input
+              className="name-input"
+              placeholder="Hugger name…"
+              value={name}
+              maxLength={40}
+              onChange={(e) => setName(e.target.value)}
+            />
+            <button className="btn primary start-btn" disabled={status !== 'open'} onClick={begin}>
+              ● START HUG
+            </button>
+          </div>
+        )}
+
+        {phase === 'score' && score && (
+          <ScoreReveal
+            profile={score.profile}
+            rank={score.rank}
+            frames={framesRef.current}
+            onDone={resetToIdle}
+            onFlash={flash}
+          />
+        )}
+      </main>
+
+      {showLive && (
+        <div className={`class-chips ${cls ? '' : 'dim'}`}>
+          <span className="chip">{cls?.style ?? 'style'}</span>
+          <span className="chip">{cls?.coordination ?? 'coordination'}</span>
+          <span className="chip">{cls?.tightness ?? 'tightness'}</span>
+        </div>
+      )}
+
+      <footer className="bottom-row">
+        <div className="cam-cell">
+          {preview ? (
+            <CameraPreview
+              preview={preview}
+              frame={frame}
+              mannequin={mannequin}
+              marking={marking}
+              neckPoint={neckPoint}
+              onClickUV={onCamClick}
+            />
           ) : (
-            <div className="session-live">
-              <div className="session-meta">
-                <span className="live-dot" /> <b>{frame?.session.name}</b>
-                <code>{fmtMs(frame?.session.elapsed_ms ?? 0)}</code>
-              </div>
-              <button className="btn danger big" onClick={endHug}>
-                ■ END HUG &amp; SCORE
-              </button>
-            </div>
+            <div className="cam-placeholder">camera offline</div>
           )}
-        </section>
-
-        <section className="block">
-          <h2 className="block-title">Live Signals</h2>
-          <Meter label="Squeeze" value={frame?.squeeze ?? 0} />
-          <Meter label="Wrap reach" value={frame?.wrap_reach ?? 0} />
-          <Meter label="Closing vel." value={frame?.closing_velocity ?? 0} />
-          <div className="elbows">
-            <span>
-              elbows <code>{frame?.elbow_angle_deg.left?.toFixed(0) ?? '—'}°</code> L ·{' '}
-              <code>{frame?.elbow_angle_deg.right?.toFixed(0) ?? '—'}°</code> R · depth{' '}
-              <code
-                title="hugger size vs mannequin size — ~1.0 means standing at the mannequin"
-                className={
-                  frame?.depth_ratio != null && (frame.depth_ratio < 0.75 || frame.depth_ratio > 1.4)
-                    ? 'depth-off'
-                    : undefined
-                }
-              >
-                {frame?.depth_ratio != null ? `×${frame.depth_ratio.toFixed(2)}` : '—'}
-              </code>
-            </span>
-          </div>
-          <div className={`class-chips ${cls ? '' : 'dim'}`}>
-            <span className="chip">{cls?.style ?? 'style'}</span>
-            <span className="chip">{cls?.coordination ?? 'coordination'}</span>
-            <span className="chip">{cls?.tightness ?? 'tightness'}</span>
-          </div>
-        </section>
-
-        <section className="block">
-          <h2 className="block-title">Zone Contact</h2>
-          <div className="zone-grid">
-            {Object.entries(ZONE_LABELS).map(([id, label]) => {
-              const v = frame?.zones[id] ?? 0
-              return (
-                <div key={id} className="zone-cell">
-                  <span className="zone-cell-label">{label}</span>
-                  <div className="zone-cell-bar">
-                    <div className="zone-cell-fill" style={{ width: `${Math.round(v * 100)}%` }} />
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </section>
-
-        <section className="block">
-          <h2 className="block-title">Mannequin</h2>
-          <div className="detect">
-            <p className={`detect-status ${mannequin?.detected ? 'ok' : 'warn'}`}>
+          <div className="mann-tools">
+            <span className={`detect-status ${mannequin?.detected ? 'ok' : 'warn'}`}>
               {marking
-                ? `click the ${marking === 'neck' ? 'NECK' : 'BASE of the torso'} in the camera panel →`
+                ? `click the ${marking === 'neck' ? 'NECK' : 'BASE'} in the camera view`
                 : detecting
-                  ? 'scanning for mannequin…'
+                  ? 'scanning…'
                   : mannequin?.detected
-                    ? `locked · ${Object.keys(mannequin.anchors).length} zone anchors`
-                    : 'not set — mark it in the camera panel'}
-            </p>
+                    ? 'mannequin locked'
+                    : 'mannequin not set'}
+            </span>
             <button
-              className={`btn ${marking ? 'danger' : ''}`}
-              disabled={status !== 'open' || !preview || detecting}
+              className="btn tiny"
+              disabled={status !== 'open' || !preview || phase !== 'idle'}
               onClick={() => {
                 if (marking) {
                   setMarking(null)
@@ -173,54 +238,56 @@ export default function App() {
                 }
               }}
             >
-              {marking ? 'CANCEL MARKING' : mannequin?.detected ? 'RE-MARK MANNEQUIN' : 'MARK MANNEQUIN'}
+              {marking ? 'cancel' : mannequin?.detected ? 're-mark' : 'mark'}
             </button>
-            {error && <p className="detect-error">{error}</p>}
+            {error && <span className="detect-error">{error}</span>}
           </div>
-        </section>
-
-        <section className="block grow">
-          <h2 className="block-title">Leaderboard</h2>
-          <Leaderboard rows={leaderboard} />
-        </section>
-      </aside>
-
-      <main className="viewport" ref={viewportRef}>
-        <div className={`status-pill ${status} ${tracking ? 'tracking' : ''}`}>
-          {status !== 'open' ? (
-            <>backend offline — start backend/main.py</>
-          ) : tracking ? (
-            <>tracking · {frame?.fps.toFixed(0)} fps</>
-          ) : (
-            <>no hugger in frame</>
-          )}
         </div>
-        {preview && (
-          <CameraPreview
-            preview={preview}
-            frame={frame}
-            mannequin={mannequin}
-            marking={marking}
-            neckPoint={neckPoint}
-            onClickUV={onCamClick}
-          />
-        )}
-        {score && <ScoreReveal profile={score.profile} rank={score.rank} onDone={clearScore} />}
-      </main>
+        <div className="board-cell">
+          <h2 className="board-title">Leaderboard</h2>
+          <Leaderboard rows={leaderboard} />
+        </div>
+      </footer>
+
+      {toast && <div className="toast">{toast}</div>}
     </div>
   )
 }
 
-const SKELETON_BONES: Array<[string, string]> = [
-  ['l_shoulder', 'r_shoulder'],
-  ['l_shoulder', 'l_elbow'],
-  ['l_elbow', 'l_wrist'],
-  ['r_shoulder', 'r_elbow'],
-  ['r_elbow', 'r_wrist'],
-]
+function BigMeter({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="meter">
+      <div className="meter-head">
+        <span>{label}</span>
+        <code>{value.toFixed(2)}</code>
+      </div>
+      <div className="meter-bar">
+        <div className="meter-fill" style={{ width: `${Math.round(value * 100)}%` }} />
+      </div>
+    </div>
+  )
+}
+
+function Leaderboard({ rows }: { rows: LeaderRow[] }) {
+  if (!rows.length) return <p className="empty">No hugs yet. Be the first.</p>
+  return (
+    <ol className="board">
+      {rows.slice(0, 6).map((r) => (
+        <li key={r.rank} className={`board-row ${r.rank === 1 ? 'gold' : ''}`}>
+          <span className="board-rank">{r.rank}</span>
+          <span className="board-name">
+            {r.name}
+            <em>{r.hug_type}</em>
+          </span>
+          <span className="board-score">{r.overall.toFixed(1)}</span>
+        </li>
+      ))}
+    </ol>
+  )
+}
 
 /** Webcam view with the hugger's detected skeleton and the mannequin's
- * detected zone anchors — the operator's aiming aid. */
+ * zone anchors — doubles as the mark-mannequin surface. */
 function CameraPreview({
   preview,
   frame,
@@ -279,45 +346,19 @@ function CameraPreview({
         )}
       </svg>
       <span className="cam-label">
-        {marking
-          ? `click the ${marking === 'neck' ? 'neck' : 'torso base'}`
-          : `${pose ? 'camera · tracking' : 'camera · no pose'} · click to ${expanded ? 'shrink' : 'expand'}`}
+        {marking ? `click the ${marking === 'neck' ? 'neck' : 'torso base'}` : 'camera'}
       </span>
     </div>
   )
 }
 
-function Meter({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="meter">
-      <div className="meter-head">
-        <span>{label}</span>
-        <code>{value.toFixed(2)}</code>
-      </div>
-      <div className="meter-bar">
-        <div className="meter-fill" style={{ width: `${Math.round(value * 100)}%` }} />
-      </div>
-    </div>
-  )
-}
-
-function Leaderboard({ rows }: { rows: LeaderRow[] }) {
-  if (!rows.length) return <p className="empty">No hugs yet. Be the first.</p>
-  return (
-    <ol className="board">
-      {rows.slice(0, 12).map((r) => (
-        <li key={r.rank} className={`board-row ${r.rank === 1 ? 'gold' : ''}`}>
-          <span className="board-rank">{r.rank}</span>
-          <span className="board-name">
-            {r.name}
-            <em>{r.hug_type}</em>
-          </span>
-          <span className="board-score">{r.overall.toFixed(1)}</span>
-        </li>
-      ))}
-    </ol>
-  )
-}
+const SKELETON_BONES: Array<[string, string]> = [
+  ['l_shoulder', 'r_shoulder'],
+  ['l_shoulder', 'l_elbow'],
+  ['l_elbow', 'l_wrist'],
+  ['r_shoulder', 'r_elbow'],
+  ['r_elbow', 'r_wrist'],
+]
 
 const DIMENSIONS: Array<{ key: keyof Profile['scoring'] & string; label: string }> = [
   { key: 'strength', label: 'Strength' },
@@ -326,10 +367,23 @@ const DIMENSIONS: Array<{ key: keyof Profile['scoring'] & string; label: string 
   { key: 'warmth', label: 'Warmth' },
 ]
 
-function ScoreReveal({ profile, rank, onDone }: { profile: Profile; rank: number; onDone: () => void }) {
+function ScoreReveal({
+  profile,
+  rank,
+  frames,
+  onDone,
+  onFlash,
+}: {
+  profile: Profile
+  rank: number
+  frames: HugFrame[]
+  onDone: () => void
+  onFlash: (msg: string) => void
+}) {
   const s = profile.scoring
-  const [shown, setShown] = useState(0) // animated overall counter
-  const [filled, setFilled] = useState(false) // bars transition from 0 after mount
+  const [shown, setShown] = useState(0)
+  const [filled, setFilled] = useState(false)
+  const [uploadState, setUploadState] = useState<'ready' | 'uploading' | 'sent'>('ready')
 
   useEffect(() => {
     const t = window.setTimeout(() => setFilled(true), 60)
@@ -350,6 +404,30 @@ function ScoreReveal({ profile, rank, onDone }: { profile: Profile; rank: number
     return () => cancelAnimationFrame(raf)
   }, [s.overall])
 
+  const upload = async () => {
+    if (uploadState !== 'ready') return
+    setUploadState('uploading')
+    try {
+      await uploadHug({
+        hugger_name: profile.metadata.hugger_name,
+        overall: s.overall,
+        strength: s.strength,
+        style: s.style,
+        coverage: s.coverage,
+        warmth: s.warmth,
+        hug_type: s.hug_type,
+        duration_ms: profile.metadata.duration_ms,
+        frames,
+      })
+      setUploadState('sent')
+      onFlash('Hug sent to the space station ♥')
+      window.setTimeout(onDone, 1800)
+    } catch (err) {
+      setUploadState('ready')
+      onFlash(`Upload failed: ${(err as Error).message}`)
+    }
+  }
+
   return (
     <div className="reveal">
       <div className="reveal-card">
@@ -360,7 +438,7 @@ function ScoreReveal({ profile, rank, onDone }: { profile: Profile; rank: number
           <span className="reveal-outof">/ 10</span>
         </div>
         <p className="reveal-rank">
-          RANK <b>#{rank}</b> · {fmtMs(profile.metadata.duration_ms)} · <code>{s.hug_type}</code>
+          RANK <b>#{rank}</b> · <code>{s.hug_type}</code>
         </p>
         <div className="reveal-dims">
           {DIMENSIONS.map((d, i) => (
@@ -369,16 +447,24 @@ function ScoreReveal({ profile, rank, onDone }: { profile: Profile; rank: number
               <div className="reveal-dim-bar">
                 <div
                   className="reveal-dim-fill"
-                  style={{ width: filled ? `${(s[d.key] as number) * 10}%` : 0, transitionDelay: `${0.5 + i * 0.25}s` }}
+                  style={{
+                    width: filled ? `${(s[d.key] as number) * 10}%` : 0,
+                    transitionDelay: `${0.5 + i * 0.25}s`,
+                  }}
                 />
               </div>
               <code>{(s[d.key] as number).toFixed(1)}</code>
             </div>
           ))}
         </div>
-        <button className="btn primary big" onClick={onDone}>
-          NEXT HUGGER
-        </button>
+        <div className="reveal-actions">
+          <button className="btn primary big" onClick={upload} disabled={uploadState !== 'ready'}>
+            {uploadState === 'uploading' ? 'UPLOADING…' : uploadState === 'sent' ? 'SENT ✓' : '⇪ UPLOAD HUG'}
+          </button>
+          <button className="btn big" onClick={onDone}>
+            NEXT HUGGER
+          </button>
+        </div>
       </div>
     </div>
   )
