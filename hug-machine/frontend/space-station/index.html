@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PROXIMA · Space Station</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2312100d'/%3E%3Ccircle cx='16' cy='16' r='8' fill='none' stroke='%23ff9e5e' stroke-width='2.5'/%3E%3Ccircle cx='16' cy='16' r='3' fill='%23ff5c38'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0b0908; --panel: #131009; --panel2: #1a1510;
+    --line: #2b231a; --line2: #3d3123;
+    --text: #f0e8dc; --dim: #9a8b78; --faint: #6b5e4e;
+    --ember: #ff9e5e; --hot: #ff5c38; --ok: #6fdc8c; --eye: #7fd8ff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background:
+      radial-gradient(80% 50% at 50% 20%, rgba(127, 216, 255, 0.05), transparent 65%),
+      radial-gradient(70% 40% at 50% 100%, rgba(255, 138, 92, 0.05), transparent 70%),
+      var(--bg);
+    color: var(--text);
+    font-family: 'IBM Plex Mono', monospace;
+    overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+
+  header {
+    display: flex; align-items: center; justify-content: center;
+    position: relative; padding: 3.2vh 3vw 1vh;
+  }
+  header h1 {
+    font-family: 'Chakra Petch', sans-serif; font-size: 3.4vh; font-weight: 700;
+    letter-spacing: .34em; margin-right: -.34em;
+  }
+  header .sub {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    top: 8vh; font-size: 1.5vh; color: var(--faint); letter-spacing: .2em;
+  }
+
+  /* link / serial connection — top right, per the sketch */
+  #linkBtn {
+    position: absolute; right: 3vw; top: 50%; transform: translateY(-50%);
+    display: flex; align-items: center; gap: 1vh;
+    background: var(--panel2); border: 1px solid var(--line2); border-radius: 1.4vh;
+    color: var(--dim); font: inherit; font-size: 1.7vh; padding: 1.2vh 1.8vh; cursor: pointer;
+  }
+  #linkBtn:hover { border-color: var(--ember); color: var(--ember); }
+  #linkBtn.connected { color: var(--ok); border-color: rgba(111, 220, 140, .45); }
+  #linkBtn svg { width: 2.6vh; height: 2.6vh; }
+  #linkBtn .tick { display: none; font-size: 2vh; }
+  #linkBtn.connected .tick { display: inline; }
+
+  main { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; }
+
+  #robotWrap { position: relative; width: min(88vw, 110vh); }
+  #robot { width: 100%; display: block; }
+
+  /* speech bubble — "Hug from <name>" */
+  #bubble {
+    position: absolute; right: -2%; top: 4%;
+    background: var(--panel2); border: 1px solid var(--line2);
+    border-radius: 2.4vh; padding: 2vh 3vh;
+    font-family: 'Chakra Petch', sans-serif; font-size: 2.6vh; font-weight: 600;
+    letter-spacing: .04em; color: var(--text);
+    opacity: 0; transform: translateY(1vh) scale(.95); transition: all .3s ease;
+    max-width: 44vw; text-align: center;
+  }
+  #bubble.show { opacity: 1; transform: none; }
+  #bubble b { color: var(--ember); }
+
+  /* big action area under the robot */
+  #actions {
+    position: absolute; left: 50%; bottom: 6vh; transform: translateX(-50%);
+    display: flex; flex-direction: column; align-items: center; gap: 1.6vh;
+    width: min(76vw, 620px); text-align: center;
+  }
+  #statusLine { font-size: 1.8vh; color: var(--dim); min-height: 2.4vh; }
+  #receiveBtn {
+    display: none; width: 100%;
+    font-family: 'Chakra Petch', sans-serif; font-weight: 700; letter-spacing: .16em;
+    font-size: 3.2vh; padding: 2.8vh 2vh; border-radius: 2.4vh; cursor: pointer;
+    color: #1a0d06; border: 1px solid var(--ember);
+    background: linear-gradient(180deg, #ff8a4d, #f05a2e);
+    animation: breathe 2.6s ease-in-out infinite;
+  }
+  #receiveBtn:disabled { opacity: .4; cursor: default; animation: none; }
+  @keyframes breathe {
+    0%, 100% { box-shadow: 0 .4vh 3vh rgba(255, 122, 61, .35); }
+    50% { box-shadow: 0 .4vh 6.5vh rgba(255, 122, 61, .7); }
+  }
+
+  /* countdown overlay */
+  #countdown {
+    position: fixed; inset: 0; display: none; align-items: center; justify-content: center;
+    font-family: 'Chakra Petch', sans-serif; font-size: 34vh; font-weight: 700;
+    color: var(--ember); text-shadow: 0 0 8vh rgba(255, 158, 94, .55);
+    background: rgba(6, 4, 3, .55); backdrop-filter: blur(3px); z-index: 10;
+  }
+
+  /* telemetry log, small + unobtrusive */
+  #log {
+    position: fixed; left: 1.6vh; bottom: 1.6vh; width: 34vw; max-height: 18vh;
+    overflow-y: auto; font-size: 1.3vh; line-height: 1.6; color: var(--faint);
+    opacity: .75; pointer-events: none; white-space: pre-wrap;
+  }
+  #log .tx { color: #6b5e4e; }
+  #log .rx { color: #5f8a6d; }
+  #log .err { color: var(--hot); }
+
+  #toast {
+    position: fixed; top: 12vh; left: 50%; transform: translateX(-50%);
+    background: rgba(19, 16, 9, .95); border: 1px solid rgba(255, 158, 94, .5);
+    border-radius: 1.6vh; padding: 1.6vh 3vh; font-size: 1.8vh; color: var(--ember);
+    display: none; z-index: 20; max-width: 80vw; text-align: center;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>PROXIMA</h1>
+  <span class="sub">SPACE STATION</span>
+  <button id="linkBtn" title="Connect to the hug robot (USB serial)">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+      <path d="M10 13a5 5 0 0 0 7.5.5l2-2a5 5 0 0 0-7-7l-1.2 1.2" />
+      <path d="M14 11a5 5 0 0 0-7.5-.5l-2 2a5 5 0 0 0 7 7l1.2-1.2" />
+    </svg>
+    <span class="tick">✓</span>
+  </button>
+</header>
+
+<main>
+  <div id="robotWrap">
+    <svg id="robot" viewBox="0 0 900 560" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <radialGradient id="shellG" cx="40%" cy="30%">
+          <stop offset="0%" stop-color="#ffffff" />
+          <stop offset="100%" stop-color="#cfd4d8" />
+        </radialGradient>
+        <radialGradient id="ringG" cx="40%" cy="35%">
+          <stop offset="0%" stop-color="#f4f6f7" />
+          <stop offset="100%" stop-color="#b9c0c6" />
+        </radialGradient>
+      </defs>
+      <!-- coiled arms: rings injected by JS -->
+      <g id="armL"></g>
+      <g id="armR"></g>
+      <!-- head / body shell -->
+      <rect x="310" y="120" width="280" height="200" rx="58" fill="url(#shellG)" stroke="#9aa1a8" stroke-width="3" />
+      <!-- face screen -->
+      <rect x="345" y="158" width="210" height="120" rx="34" fill="#0d1117" stroke="#20262c" stroke-width="4" />
+      <g id="face"></g>
+    </svg>
+    <div id="bubble"></div>
+  </div>
+
+  <div id="actions">
+    <div id="statusLine">connect the robot to begin</div>
+    <button id="receiveBtn">♥ RECEIVE HUG</button>
+  </div>
+</main>
+
+<div id="countdown"></div>
+<div id="log"></div>
+<div id="toast"></div>
+
+<script>
+/* ============================== config ============================== */
+const SUPABASE_URL = 'https://dgjklhjtxomgbarboowg.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_pKAyK6SXF9XBJ3hGVSmkOA_Gr4yJfN3';
+const POLL_MS = 3000;
+const COUNTDOWN_S = 3;
+const WRAP_BOOST = 0.5;        // squeeze * (1 + WRAP_BOOST * wrap_reach)
+const DEMO = location.hash === '#demo';
+
+/* =========================== robot drawing ========================== */
+// Coiled bellows arms: rings along a curve from each shoulder. curl 0 = open
+// wide (idle), curl 1 = fully wrapped inward. During playback curl follows
+// the strength being streamed to the real servos.
+const NS = 'http://www.w3.org/2000/svg';
+const RINGS = 11;
+
+function armPath(side, curl) {
+  // side: -1 left, +1 right. Rings march outward from the shoulder along an
+  // arc that sweeps down-and-inward as curl rises (0 = open, 1 = wrapped).
+  const sx = 450 + side * 132, sy = 250;           // shoulder anchor at head's side
+  const pts = [];
+  for (let i = 0; i < RINGS; i++) {
+    const t = i / (RINGS - 1);
+    // direction of travel at t: starts pointing outward, bends downward,
+    // and with curl keeps bending until the tip points back inward.
+    const bend = 1.7 * t + curl * 2.2 * t * t;     // accumulated bend, radians
+    const ang = 0.25 + bend;                        // 0 rad = straight out
+    const step = 34 - 6 * t;
+    if (i === 0) {
+      pts.push({ x: sx, y: sy, ang });
+    } else {
+      const prev = pts[i - 1];
+      pts.push({ x: prev.x + side * Math.cos(ang) * step, y: prev.y + Math.sin(ang) * step, ang });
+    }
+  }
+  return pts.map((p, i) => {
+    const t = i / (RINGS - 1);
+    const shrink = 1 - 0.42 * t;
+    return {
+      x: p.x, y: p.y,
+      rx: 30 * shrink, ry: 22 * shrink,
+      rot: side * ((p.ang * 180) / Math.PI - 90),
+    };
+  });
+}
+
+function renderArm(gId, side, curl) {
+  const g = document.getElementById(gId);
+  while (g.childNodes.length < RINGS + 1) {
+    g.appendChild(document.createElementNS(NS, 'ellipse'));
+  }
+  const pts = armPath(side, curl);
+  pts.forEach((p, i) => {
+    const e = g.childNodes[i];
+    e.setAttribute('cx', p.x); e.setAttribute('cy', p.y);
+    e.setAttribute('rx', p.rx); e.setAttribute('ry', p.ry);
+    e.setAttribute('transform', `rotate(${p.rot} ${p.x} ${p.y})`);
+    e.setAttribute('fill', 'url(#ringG)');
+    e.setAttribute('stroke', '#8f979e'); e.setAttribute('stroke-width', '2.5');
+  });
+  // paddle hand
+  const hand = g.childNodes[RINGS];
+  const tip = pts[RINGS - 1];
+  hand.setAttribute('cx', tip.x + side * 8); hand.setAttribute('cy', tip.y + 14);
+  hand.setAttribute('rx', 30); hand.setAttribute('ry', 20);
+  hand.setAttribute('transform', `rotate(${side * 60} ${tip.x} ${tip.y})`);
+  hand.setAttribute('fill', 'url(#shellG)');
+  hand.setAttribute('stroke', '#8f979e'); hand.setAttribute('stroke-width', '3');
+}
+
+/* face states: idle eyes / blink / alert "!" / heart */
+const face = document.getElementById('face');
+function setFace(kind) {
+  let inner = '';
+  if (kind === 'eyes' || kind === 'blink') {
+    const ry = kind === 'blink' ? 3 : 17;
+    inner = `<ellipse cx="410" cy="218" rx="17" ry="${ry}" fill="var(--eye)"/>
+             <ellipse cx="490" cy="218" rx="17" ry="${ry}" fill="var(--eye)"/>`;
+  } else if (kind === 'alert') {
+    inner = `<rect x="442" y="180" width="16" height="52" rx="8" fill="#ffd166">
+               <animate attributeName="opacity" values="1;.35;1" dur="0.9s" repeatCount="indefinite"/>
+             </rect>
+             <circle cx="450" cy="252" r="9" fill="#ffd166">
+               <animate attributeName="opacity" values="1;.35;1" dur="0.9s" repeatCount="indefinite"/>
+             </circle>`;
+  } else if (kind === 'heart') {
+    inner = `<path d="M450 254 C420 228 402 212 402 192 C402 178 413 168 427 168 C438 168 446 174 450 182 C454 174 462 168 473 168 C487 168 498 178 498 192 C498 212 480 228 450 254 Z" fill="#ff5c7a">
+               <animateTransform attributeName="transform" type="scale" additive="sum"
+                 values="1;1.08;1" dur="0.8s" repeatCount="indefinite"
+                 keyTimes="0;0.5;1" />
+             </path>`;
+  }
+  face.innerHTML = inner;
+}
+
+/* idle animation loop: arms sway gently, occasional blink */
+let mode = 'idle';                 // idle | waiting | countdown | playing
+let liveCurl = 0;                  // set during playback from streamed strength
+let blinkUntil = 0, nextBlink = performance.now() + 2500;
+function animate(now) {
+  let curl;
+  if (mode === 'playing') {
+    curl = 0.25 + 0.75 * liveCurl;
+  } else {
+    curl = 0.10 + 0.06 * Math.sin(now / 1400);   // gentle idle sway
+  }
+  renderArm('armL', -1, curl);
+  renderArm('armR', 1, curl);
+
+  if (mode === 'idle' || mode === 'countdown') {
+    if (now > nextBlink) { blinkUntil = now + 160; nextBlink = now + 2200 + Math.random() * 3800; }
+    setFaceCached(now < blinkUntil ? 'blink' : 'eyes');
+  } else if (mode === 'waiting') {
+    setFaceCached('alert');
+  } else if (mode === 'playing') {
+    setFaceCached('heart');
+  }
+  requestAnimationFrame(animate);
+}
+let lastFace = '';
+function setFaceCached(kind) { if (kind !== lastFace) { lastFace = kind; setFace(kind); } }
+requestAnimationFrame(animate);
+
+/* ============================ UI helpers ============================ */
+const $ = (id) => document.getElementById(id);
+function toast(msg, ms = 4200) {
+  const t = $('toast'); t.textContent = msg; t.style.display = 'block';
+  clearTimeout(toast._t); toast._t = setTimeout(() => (t.style.display = 'none'), ms);
+}
+function log(line, cls = '') {
+  const el = $('log');
+  const span = document.createElement('div');
+  if (cls) span.className = cls;
+  span.textContent = line;
+  el.appendChild(span);
+  while (el.childNodes.length > 60) el.removeChild(el.firstChild);
+  el.scrollTop = el.scrollHeight;
+}
+function setStatus(msg) { $('statusLine').textContent = msg; }
+
+/* ============================ web serial ============================ */
+let port = null, writer = null, connected = false;
+let lineWaiters = [];   // {prefix, resolve, deadline}
+
+async function connectSerial() {
+  if (!('serial' in navigator)) { toast('Web Serial needs Chrome or Edge.'); return; }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 9600 });
+    writer = port.writable.getWriter();
+    connected = true;
+    $('linkBtn').classList.add('connected');
+    setStatus(pending ? `hug from ${pending.hugger_name} waiting` : 'robot connected · waiting for hugs');
+    readLoop();
+    log('serial connected', 'rx');
+  } catch (e) {
+    if (e.name !== 'NotFoundError') toast('Serial: ' + e.message);
+  }
+}
+
+async function readLoop() {
+  const decoder = new TextDecoder();
+  let buf = '';
+  try {
+    const reader = port.readable.getReader();
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value);
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, nl).trim();
+        buf = buf.slice(nl + 1);
+        if (!line) continue;
+        log('← ' + line, 'rx');
+        lineWaiters = lineWaiters.filter((w) => {
+          if (line.startsWith(w.prefix)) { w.resolve(line); return false; }
+          return true;
+        });
+      }
+    }
+  } catch (e) {
+    log('read stopped: ' + e.message, 'err');
+  }
+  connected = false;
+  $('linkBtn').classList.remove('connected');
+  setStatus('robot disconnected — click the link icon');
+}
+
+async function send(cmd) {
+  if (!connected) throw new Error('robot not connected');
+  await writer.write(new TextEncoder().encode(cmd + '\n'));
+  if (!cmd.startsWith('s')) log('→ ' + cmd, 'tx');
+}
+
+function waitFor(prefix, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const w = { prefix, resolve };
+    lineWaiters.push(w);
+    setTimeout(() => {
+      lineWaiters = lineWaiters.filter((x) => x !== w);
+      reject(new Error(`no ${prefix} from robot`));
+    }, timeoutMs);
+  });
+}
+
+$('linkBtn').addEventListener('click', connectSerial);
+
+/* ============================= supabase ============================= */
+const sbHeaders = {
+  apikey: SUPABASE_KEY,
+  Authorization: `Bearer ${SUPABASE_KEY}`,
+  'Content-Type': 'application/json',
+};
+let pending = null;   // oldest unplayed hug
+let playingNow = false;
+
+async function poll() {
+  if (playingNow) return;
+  try {
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/hug_recordings?status=eq.sent&order=id.asc&limit=1&select=id,hugger_name,overall,hug_type,duration_ms,frames`,
+      { headers: sbHeaders },
+    );
+    if (!res.ok) throw new Error('supabase ' + res.status);
+    const rows = await res.json();
+    setPending(rows[0] ?? null);
+  } catch (e) {
+    if (!poll._warned) { poll._warned = true; log('poll: ' + e.message, 'err'); }
+  }
+}
+
+function setPending(hug) {
+  pending = hug;
+  if (playingNow) return;
+  if (hug) {
+    mode = 'waiting';
+    $('receiveBtn').style.display = 'block';
+    $('receiveBtn').disabled = !connected && !DEMO;
+    setStatus(
+      connected || DEMO
+        ? `incoming hug from ${hug.hugger_name} (${(hug.overall ?? 0).toFixed(1)}/10)`
+        : `hug from ${hug.hugger_name} waiting — connect the robot first`,
+    );
+  } else {
+    mode = 'idle';
+    $('receiveBtn').style.display = 'none';
+    setStatus(connected ? 'robot connected · waiting for hugs' : 'connect the robot to begin');
+  }
+}
+
+async function markPlayed(id) {
+  await fetch(`${SUPABASE_URL}/rest/v1/hug_recordings?id=eq.${id}`, {
+    method: 'PATCH',
+    headers: { ...sbHeaders, Prefer: 'return=minimal' },
+    body: JSON.stringify({ status: 'played' }),
+  }).catch(() => {});
+}
+
+/* ============================= playback ============================= */
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+async function receiveHug() {
+  const hug = pending;
+  if (!hug || playingNow) return;
+  playingNow = true;
+  $('receiveBtn').style.display = 'none';
+
+  try {
+    // 3-second countdown before the robot moves
+    mode = 'countdown';
+    const cd = $('countdown');
+    cd.style.display = 'flex';
+    for (let c = COUNTDOWN_S; c >= 1; c--) {
+      cd.textContent = c;
+      await sleep(1000);
+    }
+    cd.style.display = 'none';
+
+    mode = 'playing';
+    $('bubble').innerHTML = `Hug from <b>${escapeHtml(hug.hugger_name)}</b>`;
+    $('bubble').classList.add('show');
+    setStatus('receiving hug…');
+
+    if (!DEMO) {
+      await send('play');
+      await waitFor('>STREAM', 9000);   // arms seek body contact first
+    }
+
+    const frames = hug.frames ?? [];
+    const t0 = performance.now();
+    for (const f of frames) {
+      const wait = t0 + f.t - performance.now();
+      if (wait > 0) await sleep(wait);
+      const strength = Math.round(
+        255 * Math.min(1, Math.max(0, f.s * (1 + WRAP_BOOST * f.r))),
+      );
+      liveCurl = strength / 255;
+      if (!DEMO) await send('s' + strength);
+    }
+
+    if (!DEMO) {
+      await send('end');
+      await waitFor('>DONE', 6000).catch(() => {});
+    }
+    if (!DEMO) await markPlayed(hug.id);
+    else hug._demoPlayed = true;
+
+    setStatus(`hug from ${hug.hugger_name} delivered ♥`);
+    await sleep(2200);
+  } catch (e) {
+    toast('Hug failed: ' + e.message + ' — is hug_receiver.ino flashed?');
+    log('playback error: ' + e.message, 'err');
+    try { if (!DEMO) await send('stop'); } catch {}
+  } finally {
+    $('bubble').classList.remove('show');
+    liveCurl = 0;
+    playingNow = false;
+    setPending(DEMO ? null : pending);
+    poll();
+  }
+}
+
+$('receiveBtn').addEventListener('click', receiveHug);
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+}
+
+/* ============================== startup ============================= */
+setFace('eyes');
+if (DEMO) {
+  // #demo: fake a pending hug so the whole flow can be exercised without
+  // hardware or the database.
+  const frames = [];
+  for (let t = 0; t <= 10000; t += 100) {
+    const p = Math.sin((t / 10000) * Math.PI);
+    frames.push({ t, s: +(p * 0.9).toFixed(2), r: +(p * 0.8).toFixed(2), c: 0 });
+  }
+  setTimeout(() => setPending({ id: -1, hugger_name: 'Demo Hugger', overall: 8.7, frames }), 1500);
+  log('demo mode — no serial, no database', 'err');
+} else {
+  poll();
+  setInterval(poll, POLL_MS);
+}
+</script>
+</body>
+</html>

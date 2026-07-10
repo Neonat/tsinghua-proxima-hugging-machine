@@ -12,6 +12,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--prefix", "hug-machine/frontend/hug-rater", "--", "--port", "5200", "--strictPort"],
       "port": 5200
+    },
+    {
+      "name": "space-station",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "5201", "--directory", "hug-machine/frontend/space-station"],
+      "port": 5201
     }
   ]
 }

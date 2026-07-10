@@ -10,19 +10,26 @@ Full spec: `HUG_PROJECT_BRIEF.md` (see ~/Downloads).
 2. **Python CV backend** — `hug-machine/backend/` (MediaPipe Holistic → scoring → WebSocket) 
 3. **Hug rater frontend** — `hug-machine/frontend/hug-rater/` (live heatmap, score reveal, leaderboard) 
 
-## Running a hug session
+## Running the demo — one double-click per laptop
 
-1. Double-click **`hug-machine/Start Hug Backend.command`** in Finder (or run
-   `hug-machine/backend/.venv/bin/python hug-machine/backend/main.py`). First
-   run: macOS asks for camera access — click **Allow**. No camera handy? Add
-   `--synthetic`.
-2. `cd hug-machine/frontend/hug-rater && npm run dev` → http://localhost:5200
-3. Aim the webcam at the mannequin (check the camera panel, bottom-right),
-   press **MARK MANNEQUIN**, then click its neck and the base of its torso in
-   the camera panel — zone anchors lock on and persist across restarts.
-   Stick a colored sticker (default blue) on its chest as a FRONT marker so
-   the system can track its orientation as it's hugged from different angles.
-4. Type the hugger's name, **START HUG**, hug, **END HUG & SCORE**.
+**Earth laptop**: double-click **`hug-machine/Start Earth Kiosk.command`**.
+It installs anything missing, starts the camera backend + kiosk UI, and opens
+http://localhost:5200 (fullscreen it with ⌃⌘F on the big screen). First run:
+macOS asks for camera access — click **Allow**. Ctrl+C in the Terminal window
+stops everything. Rehearsal without a camera:
+`PROXIMA_SYNTH=1 "./Start Earth Kiosk.command"`.
+
+**Space laptop**: double-click **`hug-machine/Start Space Station.command`**.
+It serves the astronaut UI and opens it in Chrome (Web Serial needs Chrome).
+Plug in the robot, click the link icon top-right, pick its port — done.
+Try the whole flow without hardware at http://localhost:5201/#demo.
+
+One-time setup on Earth: aim the webcam at the mannequin (camera panel,
+bottom-left), press **MARK MANNEQUIN**, click its neck then torso base.
+Stick a colored sticker (default blue) on its chest as a FRONT marker so
+orientation tracks as it's hugged from different angles. Then: type the
+hugger's name, **START HUG**, hug, **END HUG & SCORE**, **UPLOAD HUG** —
+and the space robot's face flips to “!”.
 
 ## Layout
 
