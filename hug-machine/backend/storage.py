@@ -77,12 +77,13 @@ class Storage:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT id, name, timestamp, duration_ms, strength, style, coverage,"
-                " warmth, overall, hug_type FROM hugs ORDER BY overall DESC, id ASC LIMIT ?",
+                " warmth, overall, hug_type, RANK() OVER (ORDER BY overall DESC)"
+                " FROM hugs ORDER BY overall DESC, id ASC LIMIT ?",
                 (limit,),
             ).fetchall()
         keys = ("id", "name", "timestamp", "duration_ms", "strength", "style",
-                "coverage", "warmth", "overall", "hug_type")
-        return [dict(zip(keys, row), rank=i + 1) for i, row in enumerate(rows)]
+                "coverage", "warmth", "overall", "hug_type", "rank")
+        return [dict(zip(keys, row)) for row in rows]
 
     def close(self) -> None:
         self._conn.close()
